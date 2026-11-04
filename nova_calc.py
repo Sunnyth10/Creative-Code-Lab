@@ -8,9 +8,15 @@ Features: live results, named variables, history tape, unit/currency
 conversion, natural-language input, Explain steps, graphing (y = ...),
 finance functions, hex/bin, Deg/Rad, light/dark theme.
 """
+import calendar
+import datetime as dt
+import json
 import math
 import re
 import sys
+import time
+import urllib.error
+import urllib.request
 
 # --------------------------------------------------------------------------
 # Engine
@@ -173,9 +179,45 @@ UNITS = {  # name: (group, factor to base)
         "days": 86400, "week": 604800}.items()},
 }
 TEMPS = {"c", "f", "k"}
-# Offline, approximate rates per 1 USD - edit these or plug in a live API.
+# Offline fallback rates per 1 USD. Live rates are fetched and cached on demand.
 RATES = {"usd": 1.0, "inr": 83.0, "eur": 0.92, "gbp": 0.79, "jpy": 150.0,
          "aud": 1.52, "cad": 1.36, "aed": 3.67}
+CURRENCY_CACHE = {}
+CURRENCY_LAST_ATTEMPT = {}
+CURRENCY_CACHE_TTL = 6 * 60 * 60
+
+
+def currency_rate(base, quote):
+    """Return a recent reference rate, falling back to the bundled estimates offline."""
+    base, quote = base.lower(), quote.lower()
+    if base == quote:
+        return 1.0, None
+    now = time.time()
+    cached = CURRENCY_CACHE.get((base, quote))
+    if cached and now - cached[1] < CURRENCY_CACHE_TTL:
+        return cached[0], cached[2]
+
+    # Avoid repeating a failed request on each keystroke in the GUI.
+    last_attempt = CURRENCY_LAST_ATTEMPT.get((base, quote), 0)
+    if now - last_attempt > 60:
+        CURRENCY_LAST_ATTEMPT[(base, quote)] = now
+        if re.fullmatch(r"[a-z]{3}", base) and re.fullmatch(r"[a-z]{3}", quote):
+            url = "https://api.frankfurter.dev/v2/rate/%s/%s" % (base, quote)
+            request = urllib.request.Request(url, headers={"User-Agent": "NovaCalc/1.0"})
+            try:
+                with urllib.request.urlopen(request, timeout=1.5) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                rate = float(data["rate"])
+                if math.isfinite(rate) and rate > 0:
+                    CURRENCY_CACHE[(base, quote)] = (rate, now, data.get("date"))
+                    return rate, data.get("date")
+            except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError):
+                pass
+
+    if base in RATES and quote in RATES:
+        return RATES[quote] / RATES[base], None
+    raise CalcError("No rate available for %s to %s (check your connection and currency codes)" %
+                    (base.upper(), quote.upper()))
 
 
 def convert(value, a, b):
@@ -183,8 +225,10 @@ def convert(value, a, b):
     if a in TEMPS and b in TEMPS:
         c = {"c": value, "f": (value - 32) * 5 / 9, "k": value - 273.15}[a]
         return {"c": c, "f": c * 9 / 5 + 32, "k": c + 273.15}[b]
-    if a in RATES and b in RATES:
-        return value / RATES[a] * RATES[b]
+    if (a in RATES and b in RATES) or (re.fullmatch(r"[a-z]{3}", a) and
+                                       re.fullmatch(r"[a-z]{3}", b)):
+        rate, _rate_date = currency_rate(a, b)
+        return value * rate
     if a in UNITS and b in UNITS:
         if UNITS[a][0] != UNITS[b][0]:
             raise CalcError("Cannot convert %s to %s" % (a, b))
@@ -212,6 +256,45 @@ def fact(x):
             raise CalcError("Number too large")
         return float(math.factorial(int(x)))
     return math.gamma(x + 1)
+
+
+def shift_months(day, months):
+    """Add calendar months, clamping to the last valid day of the target month."""
+    month_index = day.year * 12 + day.month - 1 + months
+    year, month0 = divmod(month_index, 12)
+    month = month0 + 1
+    return day.replace(year=year, month=month,
+                       day=min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def parse_date(value):
+    value = value.strip().lower()
+    today = dt.date.today()
+    named = {"today": today, "tomorrow": today + dt.timedelta(days=1),
+             "yesterday": today - dt.timedelta(days=1)}
+    if value in named:
+        return named[value]
+    try:
+        return dt.date.fromisoformat(value)
+    except ValueError:
+        raise CalcError("Use a date like YYYY-MM-DD, today, tomorrow, or yesterday")
+
+
+def date_text(day):
+    return "%s, %s" % (day.strftime("%A"), day.isoformat())
+
+
+def age_text(birthday, today):
+    if birthday > today:
+        raise CalcError("Birth date cannot be in the future")
+    months = (today.year - birthday.year) * 12 + today.month - birthday.month
+    anchor = shift_months(birthday, months)
+    if anchor > today:
+        months -= 1
+        anchor = shift_months(birthday, months)
+    years, remaining_months = divmod(months, 12)
+    days = (today - anchor).days
+    return "%d years, %d months, %d days" % (years, remaining_months, days)
 
 
 class Calc:
@@ -303,6 +386,47 @@ class Calc:
 
     # -- natural language ----------------------------------------------------
     @staticmethod
+    def date_expression(text):
+        """Evaluate the calculator's plain-language date commands."""
+        source = text.strip()
+        m = re.fullmatch(r"(today|tomorrow|yesterday)\s*([+-])\s*(\d+)\s*"
+                         r"(days?|weeks?|months?|years?)", source, re.I)
+        if m:
+            day = parse_date(m[1])
+            amount = int(m[3]) * (-1 if m[2] == "-" else 1)
+            unit = m[4].lower().rstrip("s")
+            if unit == "day":
+                day += dt.timedelta(days=amount)
+            elif unit == "week":
+                day += dt.timedelta(weeks=amount)
+            else:
+                day = shift_months(day, amount * (12 if unit == "year" else 1))
+            return date_text(day), "%s %s %s %s -> %s" % (m[1], m[2], m[3], m[4], date_text(day))
+
+        m = re.fullmatch(r"days\s+between\s+(.+?)\s+and\s+(.+)", source, re.I)
+        if m:
+            start, end = parse_date(m[1]), parse_date(m[2])
+            count = abs((end - start).days)
+            return "%d days" % count, "Days between %s and %s = %d days" % (
+                start.isoformat(), end.isoformat(), count)
+
+        m = re.fullmatch(r"age\s+of\s+(.+)", source, re.I)
+        if m:
+            birthday = parse_date(m[1])
+            result = age_text(birthday, dt.date.today())
+            return result, "Age on %s = %s" % (birthday.isoformat(), result)
+
+        m = re.fullmatch(r"weekday\s+of\s+(.+)", source, re.I)
+        if m:
+            day = parse_date(m[1])
+            return day.strftime("%A"), "%s is a %s" % (day.isoformat(), day.strftime("%A"))
+
+        if re.fullmatch(r"today|tomorrow|yesterday", source, re.I):
+            day = parse_date(source)
+            return date_text(day), date_text(day)
+        return None
+
+    @staticmethod
     def normalize(s):
         s = s.strip().replace("×", "*").replace("÷", "/").replace("−", "-")
         s = s.replace("π", "pi").replace("√", "sqrt")
@@ -320,6 +444,9 @@ class Calc:
 
     def run(self, text, commit=True):
         """Returns (result_string, steps). Raises CalcError."""
+        date_result = self.date_expression(text)
+        if date_result is not None:
+            return date_result[0], [date_result[1]]
         s = self.normalize(text)
         if not s:
             raise CalcError("")
@@ -328,11 +455,16 @@ class Calc:
         if m:
             try:
                 val = self.ev(Parser(tokenize(m[1])).parse(), dict(self.vars), steps)
-                out = convert(val, m[2], m[3])
             except CalcError:
-                out = None
+                val = None
+            out = convert(val, m[2], m[3]) if val is not None else None
             if out is not None:
                 steps.append("%s %s -> %s %s" % (fmt(val), m[2], fmt(out), m[3]))
+                rate_info = CURRENCY_CACHE.get((m[2].lower(), m[3].lower()))
+                if rate_info and rate_info[2]:
+                    steps.append("Reference exchange rate dated %s (Frankfurter)" % rate_info[2])
+                elif m[2].lower() in RATES and m[3].lower() in RATES:
+                    steps.append("Using bundled offline exchange-rate estimate")
                 if commit:
                     self.ans = out
                 return "%s %s" % (fmt(out), m[3]), steps
@@ -380,9 +512,15 @@ MODES = {
                    ["asin", "acos", "atan", "sqrt", "exp"]],
     "Finance": [["emi", "compound", "gst", "round"]],
     "Programmer": [["hex", "bin", "0x", "0b"]],
+    "Dates": [["today", "tomorrow", "yesterday", "days between", "age of"],
+              ["weekday of", "+ days", "+ weeks", "+ months", "+ years"]],
 }
 INSERT = {"÷": "/", "×": "*", "−": "-", "√": "sqrt(", "Ans": "ans",
-          "π": "pi", "mod": " mod ", "y=": "y = "}
+          "π": "pi", "mod": " mod ", "y=": "y = ",
+          "days between": "days between ", "age of": "age of ",
+          "weekday of": "weekday of ", "+ days": "today + 30 days",
+          "+ weeks": "today + 4 weeks", "+ months": "today + 3 months",
+          "+ years": "today + 1 year"}
 
 
 def blend(c1, c2, amount):
