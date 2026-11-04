@@ -102,6 +102,21 @@ Great for learning. Greater for proving to your friend that *you* were right abo
 Stats lurk in the background too: `mean(...)`, `median(...)`, `stdev(...)`, `sum(...)`, `gcd`, `lcm`.
 
 ---
+## 📸 Screenshots
+
+### Graph view
+
+![Nova Calc graph view](assets/screenshots/graph-view.png)
+
+### Dates mode
+
+![Nova Calc dates mode](assets/screenshots/dates-mode.png)
+
+### Finance mode
+
+![Nova Calc finance mode](assets/screenshots/finance-mode.png)
+
+---
 
 ## 📈 It draws. Yes, a calculator that draws.
 
