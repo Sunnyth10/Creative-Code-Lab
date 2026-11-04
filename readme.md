@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧪 Creative Code Lab
+<img src="assets/banner.svg" alt="Creative Code Lab: small projects, weird experiments, useful tools" width="100%">
 
 **A playground for small projects, weird experiments, and tools I wish existed.**
 
