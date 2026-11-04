@@ -177,6 +177,31 @@ UNITS = {  # name: (group, factor to base)
     **{u: ("time", f) for u, f in {
         "sec": 1, "s": 1, "min": 60, "hr": 3600, "h": 3600, "day": 86400,
         "days": 86400, "week": 604800}.items()},
+    **{u: ("area", f) for u, f in {
+        "mm2": 1e-6, "cm2": 1e-4, "m2": 1, "km2": 1e6,
+        "ha": 10000, "hectare": 10000, "hectares": 10000,
+        "acre": 4046.8564224, "acres": 4046.8564224,
+        "ft2": .09290304, "sqft": .09290304,
+        "yd2": .83612736, "sqyd": .83612736,
+        "mi2": 2589988.110336, "sqmi": 2589988.110336}.items()},
+    **{u: ("speed", f) for u, f in {
+        "mps": 1, "kmh": 1 / 3.6, "kph": 1 / 3.6,
+        "mph": .44704, "fps": .3048, "knot": .514444444444,
+        "knots": .514444444444}.items()},
+}
+DATA_UNITS = {
+    # SI symbols are case-sensitive: b is a bit, B is a byte.
+    "b": .125, "B": 1,
+    "kb": 1000 / 8, "Mb": 1_000_000 / 8, "Gb": 1_000_000_000 / 8,
+    "kB": 1000, "MB": 1_000_000, "GB": 1_000_000_000, "TB": 1_000_000_000_000,
+    "KiB": 1024, "MiB": 1024 ** 2, "GiB": 1024 ** 3, "TiB": 1024 ** 4,
+    **{u: f for u, f in {
+        "bit": .125, "bits": .125, "byte": 1, "bytes": 1,
+        "kbit": 1000 / 8, "megabit": 1_000_000 / 8, "gigabit": 1_000_000_000 / 8,
+        "kilobyte": 1000, "megabyte": 1_000_000, "gigabyte": 1_000_000_000,
+        "terabyte": 1_000_000_000_000,
+        "kibibyte": 1024, "mebibyte": 1024 ** 2,
+        "gibibyte": 1024 ** 3, "tebibyte": 1024 ** 4}.items()},
 }
 TEMPS = {"c", "f", "k"}
 # Offline fallback rates per 1 USD. Live rates are fetched and cached on demand.
@@ -221,18 +246,22 @@ def currency_rate(base, quote):
 
 
 def convert(value, a, b):
-    a, b = a.lower().rstrip("°"), b.lower().rstrip("°")
+    a, b = a.rstrip("°"), b.rstrip("°")
+    if a in DATA_UNITS and b in DATA_UNITS:
+        return value * DATA_UNITS[a] / DATA_UNITS[b]
+    a, b = a.lower(), b.lower()
     if a in TEMPS and b in TEMPS:
         c = {"c": value, "f": (value - 32) * 5 / 9, "k": value - 273.15}[a]
         return {"c": c, "f": c * 9 / 5 + 32, "k": c + 273.15}[b]
-    if (a in RATES and b in RATES) or (re.fullmatch(r"[a-z]{3}", a) and
-                                       re.fullmatch(r"[a-z]{3}", b)):
-        rate, _rate_date = currency_rate(a, b)
-        return value * rate
     if a in UNITS and b in UNITS:
         if UNITS[a][0] != UNITS[b][0]:
             raise CalcError("Cannot convert %s to %s" % (a, b))
         return value * UNITS[a][1] / UNITS[b][1]
+    if (a in RATES and b in RATES) or (a not in UNITS and b not in UNITS and
+                                       re.fullmatch(r"[a-z]{3}", a) and
+                                       re.fullmatch(r"[a-z]{3}", b)):
+        rate, _rate_date = currency_rate(a, b)
+        return value * rate
     return None
 
 
@@ -429,7 +458,9 @@ class Calc:
     @staticmethod
     def normalize(s):
         s = s.strip().replace("×", "*").replace("÷", "/").replace("−", "-")
-        s = s.replace("π", "pi").replace("√", "sqrt")
+        s = s.replace("π", "pi").replace("²", "^2").replace("³", "^3")
+        s = re.sub(r"√\s*(\([^()]*\)|(?:\d+(?:\.\d*)?|\.\d+|[A-Za-z_]\w*))",
+                   r"sqrt(\1)", s)
         s = re.sub(r"^(what is|what's|calculate)\s+", "", s, flags=re.I)
         m = re.match(r"^(.+?)%\s+of\s+(.+)$", s, re.I)
         if m:
@@ -451,7 +482,8 @@ class Calc:
         if not s:
             raise CalcError("")
         steps = []
-        m = re.match(r"^(.+?)\s*([A-Za-z°]+)\s+(?:to|in|into)\s+([A-Za-z°]+)$", s)
+        m = re.match(r"^(.+?)\s*([A-Za-z°][A-Za-z0-9°]*)\s+"
+                     r"(?:to|in|into)\s+([A-Za-z°][A-Za-z0-9°]*)$", s)
         if m:
             try:
                 val = self.ev(Parser(tokenize(m[1])).parse(), dict(self.vars), steps)
@@ -507,7 +539,7 @@ BASE_KEYS = [["C", "⌫", "(", ")", "÷"], ["7", "8", "9", "×", "^"],
              ["4", "5", "6", "−", "!"], ["1", "2", "3", "+", "%"],
              ["0", ".", "π", "Ans", "="]]
 MODES = {
-    "Standard": [["√", "mod", "y="]],
+    "Standard": [["√", "x²", "mod", "y="]],
     "Scientific": [["sin", "cos", "tan", "ln", "log"],
                    ["asin", "acos", "atan", "sqrt", "exp"]],
     "Finance": [["emi", "compound", "gst", "round"]],
@@ -516,7 +548,7 @@ MODES = {
               ["weekday of", "+ days", "+ weeks", "+ months", "+ years"]],
 }
 INSERT = {"÷": "/", "×": "*", "−": "-", "√": "sqrt(", "Ans": "ans",
-          "π": "pi", "mod": " mod ", "y=": "y = ",
+          "π": "pi", "x²": "^2", "mod": " mod ", "y=": "y = ",
           "days between": "days between ", "age of": "age of ",
           "weekday of": "weekday of ", "+ days": "today + 30 days",
           "+ weeks": "today + 4 weeks", "+ months": "today + 3 months",
@@ -670,6 +702,22 @@ def launch():
         values = ", ".join("%s=%s" % (k, fmt(v)) for k, v in calc.vars.items())
         varlbl.config(text="Variables: " + (values or "none"))
 
+    def syntax_hint(text, error):
+        source = Calc.normalize(text).rstrip()
+        if source.endswith("="):
+            return "Add a value after ="
+        if source.endswith(","):
+            return "Add another function argument"
+        if re.search(r"(?:\+|-|\*|/|\^|\bmod)\s*$", source):
+            return "Add a value after the operator"
+        if source.count("(") > source.count(")"):
+            return "Finish the expression and close the parenthesis )"
+        if error.startswith("Expected"):
+            return "Check the expression structure and close any open parentheses"
+        if error == "Unexpected end":
+            return "Continue entering the expression"
+        return error
+
     def update_live(_event=None):
         text = entry.get()
         if not text.strip():
@@ -690,7 +738,8 @@ def launch():
         except CalcError as exc:
             message = str(exc)
             incomplete = message == "Unexpected end" or message.startswith("Expected")
-            show("…" if incomplete else message, "hint" if incomplete else "err")
+            show(syntax_hint(text, message) if incomplete else message,
+                 "hint" if incomplete else "err")
 
     def put(text):
         entry.insert(entry.index("insert"), text)
