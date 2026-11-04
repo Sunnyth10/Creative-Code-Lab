@@ -1,3 +1,5 @@
+![Creative Code Lab banner](assets/banner.svg)
+
 # Creative Code Lab
 
 A collection of small projects, experiments, and tools.
