@@ -364,226 +364,335 @@ class Calc:
 # GUI
 # --------------------------------------------------------------------------
 THEMES = {
-    "dark": dict(bg="#14161c", panel="#1d2029", fg="#e8eaf0", accent="#6c8cff",
-                 key="#272b37", dim="#8a90a2"),
-    "light": dict(bg="#f4f5f9", panel="#ffffff", fg="#1b1e27", accent="#3b5bdb",
-                  key="#e6e8f0", dim="#6b7185"),
+    "dark": dict(bg="#12141a", panel="#1b1e27", fg="#e8eaf0", accent="#6c8cff",
+                 dim="#8a90a2", key="#272b37", op="#2f3650", clr="#4a2a31",
+                 clr_fg="#ff8f9b", err="#ff7b8a"),
+    "light": dict(bg="#f2f3f8", panel="#ffffff", fg="#1b1e27", accent="#3b5bdb",
+                  dim="#6b7185", key="#e4e7f0", op="#d3dbf6", clr="#fbdfe3",
+                  clr_fg="#c92a3d", err="#d6336c"),
 }
+BASE_KEYS = [["C", "⌫", "(", ")", "÷"], ["7", "8", "9", "×", "^"],
+             ["4", "5", "6", "−", "!"], ["1", "2", "3", "+", "%"],
+             ["0", ".", "π", "Ans", "="]]
+MODES = {
+    "Standard": [["√", "mod", "y="]],
+    "Scientific": [["sin", "cos", "tan", "ln", "log"],
+                   ["asin", "acos", "atan", "sqrt", "exp"]],
+    "Finance": [["emi", "compound", "gst", "round"]],
+    "Programmer": [["hex", "bin", "0x", "0b"]],
+}
+INSERT = {"÷": "/", "×": "*", "−": "-", "√": "sqrt(", "Ans": "ans",
+          "π": "pi", "mod": " mod ", "y=": "y = "}
+
+
+def blend(c1, c2, amount):
+    """Mix two #rrggbb colours."""
+    rgb = lambda c: [int(c[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#%02x%02x%02x" % tuple(
+        round(a * (1 - amount) + b * amount)
+        for a, b in zip(rgb(c1), rgb(c2)))
 
 
 def launch():
+    import platform
     import tkinter as tk
     from tkinter import messagebox
 
-    calc = Calc()
+    system = platform.system()
+    ui_font = {"Darwin": "Helvetica Neue", "Windows": "Segoe UI"}.get(system, "DejaVu Sans")
+    mono_font = {"Darwin": "Menlo", "Windows": "Consolas"}.get(system, "DejaVu Sans Mono")
+    calc, history = Calc(), []
+    cfg = {"theme": "dark", "mode": "Standard", "history_pos": None}
+
     root = tk.Tk()
     root.title("Nova Calc")
-    root.geometry("860x560")
-    theme = {"name": "dark"}
-    history = []  # (expr, result)
-
-    left = tk.Frame(root)
-    left.pack(side="left", fill="both", expand=True, padx=12, pady=12)
+    root.geometry("960x660")
+    root.minsize(800, 560)
     right = tk.Frame(root)
-    right.pack(side="right", fill="y", padx=(0, 12), pady=12)
+    right.pack(side="right", fill="y", padx=(0, 14), pady=14)
+    left = tk.Frame(root)
+    left.pack(side="left", fill="both", expand=True, padx=14, pady=14)
+    fixed_buttons, pad_buttons = [], []
 
-    entry = tk.Entry(left, font=("Consolas", 20), bd=0, relief="flat")
+    modebar = tk.Frame(left)
+    modebar.pack(fill="x", pady=(0, 10))
+    entry = tk.Entry(left, font=(mono_font, 22), bd=0, relief="flat", highlightthickness=2)
     entry.pack(fill="x", ipady=10)
-    live = tk.Label(left, font=("Consolas", 22, "bold"), anchor="e", text="0")
-    live.pack(fill="x", pady=(6, 10))
+    liveframe = tk.Frame(left, height=64)
+    liveframe.pack(fill="x")
+    liveframe.pack_propagate(False)
+    live = tk.Label(liveframe, anchor="e", text="0")
+    live.pack(fill="both", expand=True)
     keys = tk.Frame(left)
     keys.pack(fill="both", expand=True)
+    status = tk.Label(left, anchor="w", font=(ui_font, 10), text="Enter evaluates · ↑/↓ recalls history · F1 help")
+    status.pack(fill="x", pady=(8, 0))
 
-    def update_live(_=None):
-        txt = entry.get()
-        if not txt.strip():
-            live.config(text="0")
+    tk.Label(right, anchor="w", font=(ui_font, 10),
+             text="TAPE   double-click: edit   |   right-click: use result").pack(fill="x", pady=(0, 4))
+    tape = tk.Listbox(right, width=40, height=16, bd=0, font=(mono_font, 12),
+                      activestyle="none", highlightthickness=0)
+    tape.pack(fill="x")
+    varlbl = tk.Label(right, text="Variables: none", justify="left", anchor="w",
+                      wraplength=330, font=(mono_font, 10))
+    varlbl.pack(fill="x", pady=10)
+    toolbar = tk.Frame(right)
+    toolbar.pack(fill="x")
+
+    def paint(button, state="normal"):
+        t = THEMES[cfg["theme"]]
+        bg, fg = ((t["accent"], "#fff") if button.kind == "eq" or
+                  (button.kind == "mode" and button.on) else
+                  (t["clr"], t["clr_fg"]) if button.kind == "clear" else
+                  (t["op"], t["fg"]) if button.kind == "op" else (t["key"], t["fg"]))
+        if state == "hover":
+            bg = blend(bg, "#ffffff" if cfg["theme"] == "dark" else "#000000", .10)
+        elif state == "down":
+            bg = blend(bg, t["accent"], .35)
+        button.config(bg=bg, fg=fg)
+
+    def mkbtn(parent, text, command, kind="key", font=None, **kw):
+        button = tk.Label(parent, text=text, font=font or (ui_font, 14), cursor="hand2", **kw)
+        button.kind, button.command, button.on = kind, command, False
+        button.bind("<Enter>", lambda _e: paint(button, "hover"))
+        button.bind("<Leave>", lambda _e: paint(button))
+        button.bind("<Button-1>", lambda _e: paint(button, "down"))
+        def released(event):
+            paint(button, "hover")
+            if 0 <= event.x < button.winfo_width() and 0 <= event.y < button.winfo_height():
+                button.command()
+        button.bind("<ButtonRelease-1>", released)
+        paint(button)
+        return button
+
+    def show(text, kind="ok"):
+        t = THEMES[cfg["theme"]]
+        live.config(text=text, fg={"ok": t["accent"], "err": t["err"], "hint": t["dim"]}[kind],
+                    font=(mono_font, 27, "bold") if kind == "ok" else (ui_font, 13))
+
+    def say(text):
+        status.config(text=text)
+
+    def refresh_vars():
+        values = ", ".join("%s=%s" % (k, fmt(v)) for k, v in calc.vars.items())
+        varlbl.config(text="Variables: " + (values or "none"))
+
+    def update_live(_event=None):
+        text = entry.get()
+        if not text.strip():
+            show("0", "hint")
             return
         try:
-            if calc.plot_expr(txt):
-                live.config(text="graph ready (press Enter)")
+            if calc.plot_expr(text):
+                show("Graph ready · press Enter", "hint")
             else:
-                live.config(text="= " + calc.run(txt, commit=False)[0])
-        except CalcError as e:
-            live.config(text=str(e) if str(e) else "")
+                show("= " + calc.run(text, commit=False)[0])
+        except CalcError as exc:
+            message = str(exc)
+            incomplete = message == "Unexpected end" or message.startswith("Expected")
+            show("…" if incomplete else message, "hint" if incomplete else "err")
 
-    def commit(_=None):
-        txt = entry.get()
-        if not txt.strip():
-            return
-        try:
-            gx = calc.plot_expr(txt)
-            if gx:
-                show_graph(gx)
-                return
-            res, _steps = calc.run(txt)
-        except CalcError as e:
-            live.config(text=str(e))
-            return
-        history.append((txt, res))
-        tape.insert("end", "%s  =  %s" % (txt, res))
-        tape.see("end")
-        entry.delete(0, "end")
-        live.config(text=res)
-        refresh_vars()
-
-    def put(t):
-        entry.insert(entry.index("insert"), t)
+    def put(text):
+        entry.insert(entry.index("insert"), text)
         entry.focus_set()
         update_live()
 
-    def clear():
+    def clear(_event=None):
         entry.delete(0, "end")
         update_live()
 
     def back():
-        i = entry.index("insert")
-        if i:
-            entry.delete(i - 1)
-        update_live()
-
-    layout = [["C", "⌫", "(", ")", "÷"],
-              ["sin", "cos", "tan", "ln", "log"],
-              ["7", "8", "9", "×", "^"],
-              ["4", "5", "6", "−", "√"],
-              ["1", "2", "3", "+", "!"],
-              ["0", ".", "%", "Ans", "="]]
-    ins = {"÷": "/", "×": "*", "−": "-", "√": "sqrt(", "Ans": "ans",
-           "sin": "sin(", "cos": "cos(", "tan": "tan(", "ln": "ln(", "log": "log("}
-    buttons = []
-    for r, row in enumerate(layout):
-        keys.rowconfigure(r, weight=1)
-        for c, k in enumerate(row):
-            keys.columnconfigure(c, weight=1)
-            cmd = (clear if k == "C" else back if k == "⌫" else commit if k == "="
-                   else (lambda t=ins.get(k, k): put(t)))
-            b = tk.Button(keys, text=k, command=cmd, font=("Segoe UI", 14), bd=0,
-                          relief="flat", cursor="hand2")
-            b.grid(row=r, column=c, sticky="nsew", padx=3, pady=3)
-            buttons.append((b, k == "="))
-
-    tk.Label(right, text="TAPE  (double-click: edit, right-click: use result)",
-             font=("Segoe UI", 8)).pack(anchor="w")
-    tape = tk.Listbox(right, width=36, height=14, bd=0, font=("Consolas", 11),
-                      activestyle="none", highlightthickness=0)
-    tape.pack(fill="x")
-    varlbl = tk.Label(right, text="Variables: none", justify="left",
-                      anchor="w", wraplength=290, font=("Consolas", 10))
-    varlbl.pack(fill="x", pady=8)
-    bar = tk.Frame(right)
-    bar.pack(fill="x")
-
-    def refresh_vars():
-        v = ", ".join("%s=%s" % (k, fmt(x)) for k, x in calc.vars.items())
-        varlbl.config(text="Variables: " + (v or "none"))
-
-    def sel():
-        s = tape.curselection()
-        return history[s[0]] if s else None
-
-    def reuse_expr(_=None):
-        h = sel()
-        if h:
-            entry.delete(0, "end")
-            entry.insert(0, h[0])
-            update_live()
-
-    def reuse_result(ev):
-        i = tape.nearest(ev.y)
-        if 0 <= i < len(history):
-            put(history[i][1].split()[0])
-
-    tape.bind("<Double-Button-1>", reuse_expr)
-    tape.bind("<Button-3>", reuse_result)
-    tape.bind("<Button-2>", reuse_result)
-
-    def explain():
-        try:
-            _, steps = calc.run(entry.get() or (history[-1][0] if history else ""),
-                                commit=False)
-        except CalcError as e:
-            steps = [str(e)]
-        messagebox.showinfo("Explain", "\n".join(
-            "%d. %s" % (i + 1, s) for i, s in enumerate(steps)) or "Nothing to explain.")
-
-    def toggle_deg():
-        calc.deg = not calc.deg
-        degbtn.config(text="DEG" if calc.deg else "RAD")
+        pos = entry.index("insert")
+        if pos:
+            entry.delete(pos - 1)
         update_live()
 
     def show_graph(expr):
         try:
-            pts = calc.sample(expr)
-        except CalcError as e:
-            live.config(text=str(e))
+            points = calc.sample(expr)
+        except CalcError as exc:
+            show(str(exc), "err")
             return
+        t = THEMES[cfg["theme"]]
         win = tk.Toplevel(root)
         win.title("y = " + expr)
-        W, H = 620, 420
-        cv = tk.Canvas(win, width=W, height=H, bg=THEMES[theme["name"]]["panel"],
-                       highlightthickness=0)
-        cv.pack()
-        ys = [y for _, y in pts if y is not None]
+        width, height, margin = 640, 440, 36
+        canvas = tk.Canvas(win, width=width, height=height, bg=t["panel"], highlightthickness=0)
+        canvas.pack()
+        ys = [y for _, y in points if y is not None]
         if not ys:
-            cv.create_text(W / 2, H / 2, text="Nothing to plot", fill="gray")
+            canvas.create_text(width / 2, height / 2, text="Nothing to plot", fill=t["dim"])
             return
-        lo, hi = max(min(ys), -50), min(max(ys), 50)
-        if hi - lo < 1e-9:
-            lo, hi = lo - 1, hi + 1
-        pad = (hi - lo) * .1
-        lo, hi = lo - pad, hi + pad
-        sx = lambda x: (x + 10) / 20 * W
-        sy = lambda y: H - (y - lo) / (hi - lo) * H
-        cv.create_line(0, sy(0), W, sy(0), fill="#888")
-        cv.create_line(sx(0), 0, sx(0), H, fill="#888")
-        prev = None
-        for x, y in pts:
-            if y is None or not lo <= y <= hi:
-                prev = None
+        ylo, yhi = max(min(ys), -50), min(max(ys), 50)
+        if yhi - ylo < 1e-9:
+            ylo, yhi = ylo - 1, yhi + 1
+        pad = (yhi - ylo) * .08
+        ylo, yhi = ylo - pad, yhi + pad
+        sx = lambda x: margin + (x + 10) / 20 * (width - 2 * margin)
+        sy = lambda y: height - margin - (y - ylo) / (yhi - ylo) * (height - 2 * margin)
+        for i in range(6):
+            gx = -10 + 20 * i / 5
+            gy = ylo + (yhi - ylo) * i / 5
+            canvas.create_line(sx(gx), margin, sx(gx), height - margin, fill=t["key"])
+            canvas.create_line(margin, sy(gy), width - margin, sy(gy), fill=t["key"])
+            canvas.create_text(sx(gx), height - margin + 12, text="%.3g" % gx, fill=t["dim"])
+            canvas.create_text(margin - 6, sy(gy), text="%.3g" % gy, fill=t["dim"], anchor="e")
+        previous = None
+        for x, y in points:
+            if y is None or not ylo <= y <= yhi:
+                previous = None
                 continue
-            p = (sx(x), sy(y))
-            if prev:
-                cv.create_line(*prev, *p, fill="#ff6b6b", width=2)
-            prev = p
-        cv.create_text(8, 8, anchor="nw", fill="#888",
-                       text="x: -10..10   y: %.3g..%.3g" % (lo, hi))
+            point = (sx(x), sy(y))
+            if previous:
+                canvas.create_line(*previous, *point, fill=t["accent"], width=2)
+            previous = point
 
-    def toggle_theme():
-        theme["name"] = "light" if theme["name"] == "dark" else "dark"
+    def commit(_event=None):
+        text = entry.get()
+        if not text.strip():
+            return
+        graph = calc.plot_expr(text)
+        if graph:
+            show_graph(graph)
+            return
+        try:
+            result, _steps = calc.run(text)
+        except CalcError as exc:
+            show(str(exc), "err")
+            return
+        history.append((text, result))
+        tape.insert("end", "%s  =  %s" % (text, result))
+        tape.see("end")
+        entry.delete(0, "end")
+        cfg["history_pos"] = None
+        show(result)
+        refresh_vars()
+
+    def recall(direction):
+        if not history:
+            return "break"
+        pos = cfg["history_pos"]
+        pos = len(history) - 1 if pos is None and direction < 0 else len(history) if pos is None else min(max(pos + direction, 0), len(history))
+        cfg["history_pos"] = pos
+        entry.delete(0, "end")
+        if pos < len(history):
+            entry.insert(0, history[pos][0])
+        update_live()
+        return "break"
+
+    def edit_history(_event=None):
+        selected = tape.curselection()
+        if selected:
+            entry.delete(0, "end")
+            entry.insert(0, history[selected[0]][0])
+            update_live()
+
+    def use_result(event):
+        index = tape.nearest(event.y)
+        if 0 <= index < len(history):
+            put(history[index][1].split()[0])
+
+    tape.bind("<Double-Button-1>", edit_history)
+    tape.bind("<Button-2>", use_result)
+    tape.bind("<Button-3>", use_result)
+
+    def explain():
+        source = entry.get() or (history[-1][0] if history else "")
+        try:
+            steps = calc.run(source, commit=False)[1]
+        except CalcError as exc:
+            steps = [str(exc)]
+        messagebox.showinfo("Explain", "\n".join("%d. %s" % (i + 1, step)
+                                                  for i, step in enumerate(steps)) or "Nothing to explain.")
+
+    def toggle_deg():
+        calc.deg = not calc.deg
+        deg_button.config(text="DEG" if calc.deg else "RAD")
+        update_live()
+
+    mode_buttons = {}
+    def build_keys():
+        for widget in keys.winfo_children():
+            widget.destroy()
+        pad_buttons.clear()
+        rows = MODES[cfg["mode"]] + BASE_KEYS
+        for row, values in enumerate(rows):
+            keys.rowconfigure(row, weight=1, uniform="rows")
+            for col, key in enumerate(values):
+                keys.columnconfigure(col, weight=1, uniform="cols")
+                if key == "C":
+                    command, kind = clear, "clear"
+                elif key == "⌫":
+                    command, kind = back, "clear"
+                elif key == "=":
+                    command, kind = commit, "eq"
+                else:
+                    text = INSERT.get(key, key + "(" if key in calc.funcs else key)
+                    command = lambda value=text: put(value)
+                    kind = "op" if key in ("÷", "×", "−", "+", "^", "!", "%", "(", ")") else "key"
+                button = mkbtn(keys, key, command, kind,
+                               font=(ui_font, 15 if len(key) < 3 else 11))
+                button.grid(row=row, column=col, sticky="nsew", padx=3, pady=3)
+                pad_buttons.append(button)
+
+    def set_mode(name):
+        cfg["mode"] = name
+        build_keys()
         apply_theme()
+        say(name + " mode")
 
-    def mk(text, cmd):
-        b = tk.Button(bar, text=text, command=cmd, bd=0, relief="flat",
-                      cursor="hand2", font=("Segoe UI", 10), padx=8, pady=4)
-        b.pack(side="left", padx=2)
-        return b
+    for name in MODES:
+        button = mkbtn(modebar, name, lambda n=name: set_mode(n), "mode",
+                       font=(ui_font, 10), padx=10, pady=6)
+        button.pack(side="left", padx=(0, 4))
+        mode_buttons[name] = button
+        fixed_buttons.append(button)
 
-    mk("Explain", explain)
-    degbtn = mk("DEG", toggle_deg)
-    mk("Theme", toggle_theme)
-    mk("Clear tape", lambda: (tape.delete(0, "end"), history.clear()))
+    def tool(text, command):
+        button = mkbtn(toolbar, text, command, font=(ui_font, 10), padx=8, pady=6)
+        button.pack(side="left", padx=(0, 4))
+        fixed_buttons.append(button)
+        return button
+
+    tool("Explain", explain)
+    deg_button = tool("DEG", toggle_deg)
+    def toggle_theme():
+        cfg["theme"] = "light" if cfg["theme"] == "dark" else "dark"
+        apply_theme()
+    tool("Theme", toggle_theme)
+    tool("Clear tape", lambda: (history.clear(), tape.delete(0, "end"), refresh_vars()))
 
     def apply_theme():
-        t = THEMES[theme["name"]]
+        t = THEMES[cfg["theme"]]
         root.config(bg=t["bg"])
-        for w in (left, right, keys, bar):
-            w.config(bg=t["bg"])
-        entry.config(bg=t["panel"], fg=t["fg"], insertbackground=t["fg"])
-        live.config(bg=t["bg"], fg=t["accent"])
-        tape.config(bg=t["panel"], fg=t["fg"], selectbackground=t["accent"])
+        for widget in (left, right, keys, modebar, liveframe, toolbar):
+            widget.config(bg=t["bg"])
+        entry.config(bg=t["panel"], fg=t["fg"], insertbackground=t["fg"],
+                     highlightbackground=t["panel"], highlightcolor=t["accent"])
+        live.config(bg=t["bg"])
+        tape.config(bg=t["panel"], fg=t["fg"], selectbackground=t["accent"], selectforeground="#fff")
         varlbl.config(bg=t["bg"], fg=t["dim"])
-        for w in right.winfo_children():
-            if isinstance(w, tk.Label) and w is not varlbl:
-                w.config(bg=t["bg"], fg=t["dim"])
-        for w in bar.winfo_children():
-            w.config(bg=t["key"], fg=t["fg"], activebackground=t["accent"])
-        for b, is_eq in buttons:
-            b.config(bg=t["accent"] if is_eq else t["key"],
-                     fg="white" if is_eq else t["fg"], activebackground=t["accent"])
+        status.config(bg=t["bg"], fg=t["dim"])
+        for widget in right.winfo_children():
+            if isinstance(widget, tk.Label) and widget is not varlbl:
+                widget.config(bg=t["bg"], fg=t["dim"])
+        for button in fixed_buttons + pad_buttons:
+            button.on = button in mode_buttons.values() and mode_buttons.get(cfg["mode"]) is button
+            paint(button)
+        update_live()
 
     entry.bind("<KeyRelease>", update_live)
     entry.bind("<Return>", commit)
-    entry.bind("<Escape>", lambda e: clear())
+    entry.bind("<KP_Enter>", commit)
+    entry.bind("<Escape>", clear)
+    entry.bind("<Up>", lambda _e: recall(-1))
+    entry.bind("<Down>", lambda _e: recall(1))
+    root.bind("<F1>", lambda _e: messagebox.showinfo(
+        "Nova Calc help", "Enter expressions or assignments such as rent = 12000.\n"
+        "Use y = expression to graph, and value unit to unit to convert.\n"
+        "Right-click a tape entry to reuse its result."))
+
+    build_keys()
     apply_theme()
     entry.focus_set()
     root.mainloop()
