@@ -401,15 +401,17 @@ def launch():
     system = platform.system()
     ui_font = {"Darwin": "Helvetica Neue", "Windows": "Segoe UI"}.get(system, "DejaVu Sans")
     mono_font = {"Darwin": "Menlo", "Windows": "Consolas"}.get(system, "DejaVu Sans Mono")
+    shortcut_mod = "Command" if system == "Darwin" else "Control"
     calc, history = Calc(), []
     cfg = {"theme": "dark", "mode": "Standard", "history_pos": None}
+    memory = {"value": None}
 
     root = tk.Tk()
     root.title("Nova Calc")
     root.geometry("960x660")
     root.minsize(800, 560)
     right = tk.Frame(root)
-    right.pack(side="right", fill="y", padx=(0, 14), pady=14)
+    right.pack(side="right", fill="both", expand=True, padx=(0, 14), pady=14)
     left = tk.Frame(root)
     left.pack(side="left", fill="both", expand=True, padx=14, pady=14)
     fixed_buttons, pad_buttons = [], []
@@ -425,18 +427,31 @@ def launch():
     live.pack(fill="both", expand=True)
     keys = tk.Frame(left)
     keys.pack(fill="both", expand=True)
-    status = tk.Label(left, anchor="w", font=(ui_font, 10), text="Enter evaluates · ↑/↓ recalls history · F1 help")
+    status = tk.Label(left, anchor="w", font=(ui_font, 10),
+                      text="Enter evaluates · ↑/↓ history · Esc clear · F1 help")
     status.pack(fill="x", pady=(8, 0))
 
-    tk.Label(right, anchor="w", font=(ui_font, 10),
+    tabbar = tk.Frame(right)
+    tabbar.pack(fill="x", pady=(0, 8))
+    history_panel = tk.Frame(right)
+    graph_panel = tk.Frame(right)
+    history_panel.pack(fill="both", expand=True)
+
+    tk.Label(history_panel, anchor="w", font=(ui_font, 10),
              text="TAPE   double-click: edit   |   right-click: use result").pack(fill="x", pady=(0, 4))
-    tape = tk.Listbox(right, width=40, height=16, bd=0, font=(mono_font, 12),
+    tape = tk.Listbox(history_panel, width=40, height=16, bd=0, font=(mono_font, 12),
                       activestyle="none", highlightthickness=0)
-    tape.pack(fill="x")
-    varlbl = tk.Label(right, text="Variables: none", justify="left", anchor="w",
+    tape.pack(fill="both", expand=True)
+    memorybar = tk.Frame(history_panel)
+    memorybar.pack(fill="x", pady=(8, 0))
+    memory_status = tk.Label(memorybar, text="Memory: empty", anchor="w", font=(mono_font, 10))
+    memory_status.pack(fill="x", pady=(0, 4))
+    memory_buttons = tk.Frame(memorybar)
+    memory_buttons.pack(fill="x")
+    varlbl = tk.Label(history_panel, text="Variables: none", justify="left", anchor="w",
                       wraplength=330, font=(mono_font, 10))
     varlbl.pack(fill="x", pady=10)
-    toolbar = tk.Frame(right)
+    toolbar = tk.Frame(history_panel)
     toolbar.pack(fill="x")
 
     def paint(button, state="normal"):
@@ -465,6 +480,46 @@ def launch():
         paint(button)
         return button
 
+    tab_buttons = {}
+    def show_panel(name):
+        history_panel.pack_forget()
+        graph_panel.pack_forget()
+        (history_panel if name == "History" else graph_panel).pack(fill="both", expand=True)
+        for tab_name, button in tab_buttons.items():
+            button.on = tab_name == name
+            paint(button)
+        if name == "Graph" and graph_state["expr"] is not None:
+            draw_graph()
+
+    for tab_name in ("History", "Graph"):
+        button = mkbtn(tabbar, tab_name, lambda n=tab_name: show_panel(n), "mode",
+                       font=(ui_font, 11), padx=14, pady=7)
+        button.pack(side="left", padx=(0, 5))
+        tab_buttons[tab_name] = button
+        fixed_buttons.append(button)
+
+    graph_controls = tk.Frame(graph_panel, padx=8, pady=8)
+    graph_controls.pack(fill="x")
+    tk.Label(graph_controls, text="x min", font=(ui_font, 10)).pack(side="left")
+    x_min = tk.Entry(graph_controls, width=8)
+    x_min.insert(0, "-10")
+    x_min.pack(side="left", padx=(4, 9))
+    tk.Label(graph_controls, text="x max", font=(ui_font, 10)).pack(side="left")
+    x_max = tk.Entry(graph_controls, width=8)
+    x_max.insert(0, "10")
+    x_max.pack(side="left", padx=(4, 8))
+    graph_status = tk.Label(graph_controls, text="Enter y = expression", anchor="w",
+                            font=(ui_font, 9))
+    graph_status.pack(side="left", fill="x", expand=True, padx=4)
+    plot_button = mkbtn(graph_controls, "Plot", lambda: draw_graph(),
+                        font=(ui_font, 10), padx=9, pady=4)
+    plot_button.pack(side="right")
+    fixed_buttons.append(plot_button)
+    graph_canvas = tk.Canvas(graph_panel, width=480, height=440, highlightthickness=0)
+    graph_canvas.pack(fill="both", expand=True, padx=4, pady=(0, 4))
+    graph_state = {"expr": None, "points": [], "xlo": -10.0, "xhi": 10.0,
+                   "readout": None, "redraw_id": None}
+
     def show(text, kind="ok"):
         t = THEMES[cfg["theme"]]
         live.config(text=text, fg={"ok": t["accent"], "err": t["err"], "hint": t["dim"]}[kind],
@@ -483,8 +538,15 @@ def launch():
             show("0", "hint")
             return
         try:
-            if calc.plot_expr(text):
+            graph_expr = calc.plot_expr(text)
+            if graph_expr:
                 show("Graph ready · press Enter", "hint")
+                if graph_state["expr"] is not None:
+                    if not graph_panel.winfo_manager():
+                        show_panel("Graph")
+                    if graph_state["redraw_id"]:
+                        root.after_cancel(graph_state["redraw_id"])
+                    graph_state["redraw_id"] = root.after(120, draw_graph)
             else:
                 show("= " + calc.run(text, commit=False)[0])
         except CalcError as exc:
@@ -507,36 +569,62 @@ def launch():
             entry.delete(pos - 1)
         update_live()
 
-    def show_graph(expr):
-        try:
-            points = calc.sample(expr)
-        except CalcError as exc:
-            show(str(exc), "err")
+    def draw_graph(_event=None):
+        graph_state["redraw_id"] = None
+        source = entry.get()
+        expression = calc.plot_expr(source) if source.strip() else None
+        expression = expression or graph_state["expr"]
+        if expression is None:
+            graph_status.config(text="Enter y = expression")
             return
+        try:
+            xlo, xhi = float(x_min.get()), float(x_max.get())
+            if not math.isfinite(xlo) or not math.isfinite(xhi) or xlo >= xhi:
+                raise ValueError
+            points = calc.sample(expression, xlo, xhi)
+        except ValueError:
+            graph_status.config(text="Enter finite x limits with min < max")
+            return
+        except CalcError as exc:
+            graph_status.config(text="Expression: " + str(exc))
+            return
+
+        graph_state.update(expr=expression, xlo=xlo, xhi=xhi, points=points)
+        graph_status.config(text="")
         t = THEMES[cfg["theme"]]
-        win = tk.Toplevel(root)
-        win.title("y = " + expr)
-        width, height, margin = 640, 440, 36
-        canvas = tk.Canvas(win, width=width, height=height, bg=t["panel"], highlightthickness=0)
-        canvas.pack()
+        graph_canvas.config(bg=t["panel"])
+        graph_canvas.delete("all")
+        graph_state["readout"] = None
+        width = max(graph_canvas.winfo_width(), 320)
+        height = max(graph_canvas.winfo_height(), 280)
+        margin = 48
         ys = [y for _, y in points if y is not None]
         if not ys:
-            canvas.create_text(width / 2, height / 2, text="Nothing to plot", fill=t["dim"])
+            graph_canvas.create_text(width / 2, height / 2, text="Nothing to plot", fill=t["dim"])
+            graph_state["readout"] = graph_canvas.create_text(
+                width - margin, 14, anchor="e", fill=t["fg"], font=(mono_font, 10),
+                text="Move over the graph for coordinates")
             return
-        ylo, yhi = max(min(ys), -50), min(max(ys), 50)
+        ylo, yhi = min(ys), max(ys)
         if yhi - ylo < 1e-9:
             ylo, yhi = ylo - 1, yhi + 1
-        pad = (yhi - ylo) * .08
-        ylo, yhi = ylo - pad, yhi + pad
-        sx = lambda x: margin + (x + 10) / 20 * (width - 2 * margin)
+        else:
+            pad = (yhi - ylo) * .08
+            ylo, yhi = ylo - pad, yhi + pad
+        sx = lambda x: margin + (x - xlo) / (xhi - xlo) * (width - 2 * margin)
         sy = lambda y: height - margin - (y - ylo) / (yhi - ylo) * (height - 2 * margin)
         for i in range(6):
-            gx = -10 + 20 * i / 5
+            gx = xlo + (xhi - xlo) * i / 5
             gy = ylo + (yhi - ylo) * i / 5
-            canvas.create_line(sx(gx), margin, sx(gx), height - margin, fill=t["key"])
-            canvas.create_line(margin, sy(gy), width - margin, sy(gy), fill=t["key"])
-            canvas.create_text(sx(gx), height - margin + 12, text="%.3g" % gx, fill=t["dim"])
-            canvas.create_text(margin - 6, sy(gy), text="%.3g" % gy, fill=t["dim"], anchor="e")
+            graph_canvas.create_line(sx(gx), margin, sx(gx), height - margin, fill=t["key"])
+            graph_canvas.create_line(margin, sy(gy), width - margin, sy(gy), fill=t["key"])
+            graph_canvas.create_text(sx(gx), height - margin + 14, text="%.3g" % gx, fill=t["dim"])
+            graph_canvas.create_text(margin - 7, sy(gy), text="%.3g" % gy,
+                                     fill=t["dim"], anchor="e")
+        if ylo < 0 < yhi:
+            graph_canvas.create_line(margin, sy(0), width - margin, sy(0), fill=t["dim"], width=2)
+        if xlo < 0 < xhi:
+            graph_canvas.create_line(sx(0), margin, sx(0), height - margin, fill=t["dim"], width=2)
         previous = None
         for x, y in points:
             if y is None or not ylo <= y <= yhi:
@@ -544,8 +632,28 @@ def launch():
                 continue
             point = (sx(x), sy(y))
             if previous:
-                canvas.create_line(*previous, *point, fill=t["accent"], width=2)
+                graph_canvas.create_line(*previous, *point, fill=t["accent"], width=2)
             previous = point
+        graph_state["readout"] = graph_canvas.create_text(
+            width - margin, 14, anchor="e", fill=t["fg"], font=(mono_font, 10),
+            text="Move over the graph for coordinates")
+
+    def show_coordinates(event):
+        width = max(graph_canvas.winfo_width(), 320)
+        margin = 48
+        if (not graph_state["points"] or graph_state["readout"] is None or
+                not margin <= event.x <= width - margin):
+            return
+        ratio = (event.x - margin) / (width - 2 * margin)
+        index = round(ratio * (len(graph_state["points"]) - 1))
+        x, y = graph_state["points"][index]
+        value = "undefined" if y is None else "%.5g" % y
+        graph_canvas.itemconfig(graph_state["readout"], text="x = %.5g    y = %s" % (x, value))
+
+    graph_canvas.bind("<Motion>", show_coordinates)
+    for field in (x_min, x_max):
+        field.bind("<Return>", draw_graph)
+    graph_canvas.bind("<Configure>", lambda _e: draw_graph() if graph_state["expr"] else None)
 
     def commit(_event=None):
         text = entry.get()
@@ -553,7 +661,9 @@ def launch():
             return
         graph = calc.plot_expr(text)
         if graph:
-            show_graph(graph)
+            graph_state["expr"] = graph
+            show_panel("Graph")
+            draw_graph()
             return
         try:
             result, _steps = calc.run(text)
@@ -567,6 +677,40 @@ def launch():
         cfg["history_pos"] = None
         show(result)
         refresh_vars()
+
+    def set_memory(value):
+        memory["value"] = value
+        memory_status.config(text="Memory: " + ("empty" if value is None else fmt(value)))
+
+    def memory_recall():
+        if memory["value"] is None:
+            say("Memory is empty")
+            return "break"
+        put(fmt(memory["value"]))
+        return "break"
+
+    def memory_clear():
+        set_memory(None)
+        say("Memory cleared")
+        return "break"
+
+    def memory_adjust(sign):
+        source = entry.get().strip()
+        if not source:
+            say("Enter a number before using M+ or M−")
+            return "break"
+        try:
+            result = calc.run(source, commit=False)[0]
+            value = float(result)
+            if not math.isfinite(value):
+                raise ValueError
+        except (CalcError, TypeError, ValueError):
+            say("M+ and M− need a finite numeric result")
+            return "break"
+        current = memory["value"] or 0.0
+        set_memory(current + sign * value)
+        say("Added to memory" if sign > 0 else "Subtracted from memory")
+        return "break"
 
     def recall(direction):
         if not history:
@@ -654,6 +798,17 @@ def launch():
         fixed_buttons.append(button)
         return button
 
+    def memory_tool(text, command):
+        button = mkbtn(memory_buttons, text, command, font=(ui_font, 10), padx=8, pady=6)
+        button.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        fixed_buttons.append(button)
+        return button
+
+    memory_tool("MC", memory_clear)
+    memory_tool("MR", memory_recall)
+    memory_tool("M−", lambda: memory_adjust(-1))
+    memory_tool("M+", lambda: memory_adjust(1))
+
     tool("Explain", explain)
     deg_button = tool("DEG", toggle_deg)
     def toggle_theme():
@@ -665,20 +820,30 @@ def launch():
     def apply_theme():
         t = THEMES[cfg["theme"]]
         root.config(bg=t["bg"])
-        for widget in (left, right, keys, modebar, liveframe, toolbar):
+        for widget in (left, right, keys, modebar, liveframe, toolbar, memorybar,
+                       memory_buttons, tabbar, history_panel, graph_panel, graph_controls):
             widget.config(bg=t["bg"])
         entry.config(bg=t["panel"], fg=t["fg"], insertbackground=t["fg"],
                      highlightbackground=t["panel"], highlightcolor=t["accent"])
         live.config(bg=t["bg"])
         tape.config(bg=t["panel"], fg=t["fg"], selectbackground=t["accent"], selectforeground="#fff")
         varlbl.config(bg=t["bg"], fg=t["dim"])
+        memory_status.config(bg=t["bg"], fg=t["dim"])
         status.config(bg=t["bg"], fg=t["dim"])
-        for widget in right.winfo_children():
-            if isinstance(widget, tk.Label) and widget is not varlbl:
-                widget.config(bg=t["bg"], fg=t["dim"])
+        graph_status.config(bg=t["bg"], fg=t["dim"])
+        for parent in (right, history_panel, graph_panel, graph_controls):
+            for widget in parent.winfo_children():
+                if isinstance(widget, tk.Label):
+                    widget.config(bg=t["bg"], fg=t["dim"])
+        for field in (x_min, x_max):
+            field.config(bg=t["panel"], fg=t["fg"], insertbackground=t["fg"])
         for button in fixed_buttons + pad_buttons:
-            button.on = button in mode_buttons.values() and mode_buttons.get(cfg["mode"]) is button
+            button.on = ((button in mode_buttons.values() and mode_buttons.get(cfg["mode"]) is button)
+                         or (button in tab_buttons.values() and
+                             tab_buttons.get("Graph" if graph_panel.winfo_manager() else "History") is button))
             paint(button)
+        if graph_state["expr"] is not None and graph_panel.winfo_manager():
+            draw_graph()
         update_live()
 
     entry.bind("<KeyRelease>", update_live)
@@ -687,10 +852,20 @@ def launch():
     entry.bind("<Escape>", clear)
     entry.bind("<Up>", lambda _e: recall(-1))
     entry.bind("<Down>", lambda _e: recall(1))
+    root.bind("<%s-l>" % shortcut_mod, clear)
+    root.bind("<%s-d>" % shortcut_mod, lambda _e: (toggle_deg(), "break")[1])
+    root.bind("<%s-m>" % shortcut_mod, lambda _e: memory_recall())
+    root.bind("<%s-Shift-m>" % shortcut_mod, lambda _e: memory_clear())
+    root.bind("<%s-Shift-equal>" % shortcut_mod, lambda _e: memory_adjust(1))
+    root.bind("<%s-Shift-minus>" % shortcut_mod, lambda _e: memory_adjust(-1))
     root.bind("<F1>", lambda _e: messagebox.showinfo(
         "Nova Calc help", "Enter expressions or assignments such as rent = 12000.\n"
         "Use y = expression to graph, and value unit to unit to convert.\n"
-        "Right-click a tape entry to reuse its result."))
+        "Right-click a tape entry to reuse its result.\n\n"
+        "Esc clears input · %s+L clears · %s+D toggles DEG/RAD\n"
+        "%s+M recalls memory · %s+Shift+M clears memory\n"
+        "%s+Shift+= adds to memory · %s+Shift+- subtracts from memory" %
+        ("⌘" if shortcut_mod == "Command" else "Ctrl",) * 6))
 
     build_keys()
     apply_theme()
