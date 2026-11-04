@@ -40,9 +40,13 @@ One file. Zero dependencies. No `eval()`. No subscriptions. No ads. No "Calculat
 python3 nova_calc.py            # run from inside this folder
 python3 nova_calc.py --test     # run the engine self-test
 ```
-
+for on;t this project
+```bash
+git clone --filter=blob:none --sparse https://github.com/Sunnyth10/Creative-Code-Lab.git
+cd Creative-Code-Lab
+git sparse-checkout set nova_calc assets
 From the repository root, use `python3 nova_calc/nova_calc.py` instead.
-
+```
 Needs **Python 3.9+**. On Linux, if it complains about `tkinter`: `sudo apt install python3-tk`.
 Windows and macOS already ship with it. Go forth.
 
