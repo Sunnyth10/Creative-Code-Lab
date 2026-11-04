@@ -18,6 +18,20 @@ converts your units, counts your days, and judges your EMI (silently, with love)
 
 One file. Zero dependencies. No `eval()`. No subscriptions. No ads. No "Calculator Pro+ Premium Gold."
 
+## 📸 Screenshots
+
+### Graph view
+
+![Nova Calc graph view](assets/screenshots/graph-view.png)
+
+### Dates mode
+
+![Nova Calc dates mode](assets/screenshots/dates-mode.png)
+
+### Finance mode
+
+![Nova Calc finance mode](assets/screenshots/finance-mode.png)
+
 ---
 
 ## ⚡ Launch it in 10 seconds
