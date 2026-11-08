@@ -9,14 +9,26 @@
 <body>
   <canvas id="c"></canvas>
   <div id="ui">
-    <div class="row"><strong>Crazy Physics Playground</strong></div>
-    <div class="row">Click/drag: attract & fling | Double-click: gravity well | Space: explosion | R: reset</div>
-    <div class="row">
-      <label>Gravity <input id="g" type="range" min="-2" max="3" step="0.05" value="0.35"></label>
-      <label>Bounce <input id="b" type="range" min="0.2" max="1.2" step="0.01" value="0.92"></label>
-      <label>Chaos <input id="ch" type="range" min="0" max="2" step="0.01" value="1"></label>
+    <div class="row head">
+      <strong>Crazy Physics Playground</strong>
+      <button id="fold" title="Collapse panel" aria-label="Collapse panel">–</button>
     </div>
-    <div class="row" id="stats"></div>
+    <div class="body">
+      <div class="row hint">Drag: spawn &amp; attract · Right-click/Shift+drag: repel · Double-click or W: gravity well · Space: blast · B: burst · C: colour mode · T: trails · P: pause · R: reset</div>
+      <div class="row">
+        <label>Gravity <input id="g" type="range" min="-2" max="3" step="0.05" value="0.35"></label>
+        <label>Bounce <input id="b" type="range" min="0.2" max="1.2" step="0.01" value="0.92"></label>
+        <label>Chaos <input id="ch" type="range" min="0" max="2" step="0.01" value="1"></label>
+      </div>
+      <div class="row">
+        <button id="pause">Pause</button>
+        <button id="color">Colour: Flow</button>
+        <button id="trails">Trails: on</button>
+        <button id="burst">Blast</button>
+        <button id="reset">Reset</button>
+      </div>
+      <div class="row" id="stats"></div>
+    </div>
   </div>
   <script type="module" src="./main.js"></script>
 </body>
