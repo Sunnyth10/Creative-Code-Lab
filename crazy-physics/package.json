@@ -1,0 +1,10 @@
+{
+  "name": "crazy-physics-playground",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "serve": "npx http-server -c-1 ."
+  },
+  "devDependencies": { "typescript": "^5.4.0" }
+}
