@@ -83,9 +83,14 @@ function explode(cx, cy) {
     waves.push({ x: cx, y: cy, t: WAVE_LIFE });
     hueBase = (hueBase + 47) % 360;
 }
-function setPaused(p) { paused = p; $("pause").textContent = p ? "Resume" : "Pause"; }
-function setColor(m) { colorMode = m % MODES.length; $("color").textContent = "Colour: " + MODES[colorMode]; }
-function setTrails(t) { trails = t; $("trails").textContent = "Trails: " + (t ? "on" : "off"); }
+function setPaused(p) {
+    paused = p;
+    $("pause").classList.toggle("paused", p);
+    $("stats").classList.toggle("paused", p);
+    $("pause").querySelector(".lb").textContent = p ? "Resume" : "Pause";
+}
+function setColor(m) { colorMode = m % MODES.length; $("color").querySelector(".lb").textContent = MODES[colorMode]; }
+function setTrails(t) { trails = t; $("trails").classList.toggle("on", t); }
 // ---------- Input (pointer events: mouse + touch + pen) ----------
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 canvas.addEventListener("pointermove", (e) => {
@@ -149,8 +154,7 @@ $("trails").addEventListener("click", () => setTrails(!trails));
 $("reset").addEventListener("click", () => seed());
 $("burst").addEventListener("click", (e) => { explode(W / 2, H / 2); e.currentTarget.blur(); });
 $("fold").addEventListener("click", () => {
-    const c = panel.classList.toggle("collapsed");
-    $("fold").textContent = c ? "+" : "–";
+    panel.classList.toggle("collapsed");
 });
 // ---------- Physics ----------
 function applyForces() {
@@ -348,8 +352,22 @@ function frame(now) {
     draw();
     if (now - statT > 250) {
         statT = now;
-        stats.textContent = `balls ${balls.length}/${MAX_BALLS} · wells ${wells.length} · ${fps.toFixed(0)} fps${paused ? " · paused" : ""}`;
+        $("sb").textContent = `${balls.length}/${MAX_BALLS}`;
+        $("sw").textContent = String(wells.length);
+        $("sf").textContent = fps.toFixed(0);
     }
     requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+// ---------- Slider polish: live value readout, gradient fill, double-click to reset ----------
+document.querySelectorAll('input[type="range"]').forEach((r) => {
+    const out = $(r.id + "v");
+    const update = () => {
+        out.textContent = Number(r.value).toFixed(2);
+        r.style.setProperty("--p", ((Number(r.value) - Number(r.min)) / (Number(r.max) - Number(r.min))) * 100 + "%");
+    };
+    r.addEventListener("input", update);
+    r.addEventListener("dblclick", () => { r.value = r.defaultValue; update(); });
+    r.title = "Double-click to reset";
+    update();
+});

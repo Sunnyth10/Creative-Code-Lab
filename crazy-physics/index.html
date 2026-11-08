@@ -8,28 +8,63 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div id="ui">
-    <div class="row head">
-      <strong>Crazy Physics Playground</strong>
-      <button id="fold" title="Collapse panel" aria-label="Collapse panel">–</button>
-    </div>
+  <aside id="ui" aria-label="Controls">
+    <header class="top">
+      <span class="logo" aria-hidden="true"></span>
+      <h1>Crazy Physics <span>Playground</span></h1>
+      <div id="stats">
+        <span class="chip"><b id="sb">0</b> balls</span>
+        <span class="chip"><b id="sw">0</b> wells</span>
+        <span class="chip fps"><b id="sf">60</b> fps</span>
+      </div>
+      <details class="keys">
+        <summary title="Shortcuts"><span aria-hidden="true">?</span> Keys</summary>
+        <ul>
+          <li><span><kbd>Drag</kbd></span> spawn &amp; attract</li>
+          <li><span><kbd>Right-drag</kbd> <kbd>Shift</kbd></span> repel</li>
+          <li><span><kbd>Dbl-click</kbd> <kbd>W</kbd></span> gravity well</li>
+          <li><span><kbd>Space</kbd></span> blast at cursor</li>
+          <li><span><kbd>B</kbd></span> burst of balls</li>
+          <li><span><kbd>C</kbd></span> colour mode</li>
+          <li><span><kbd>T</kbd></span> trails</li>
+          <li><span><kbd>P</kbd> <kbd>R</kbd></span> pause · reset</li>
+        </ul>
+      </details>
+      <button id="fold" class="icon" title="Collapse panel" aria-label="Collapse panel">
+        <svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
+      </button>
+    </header>
+
     <div class="body">
-      <div class="row hint">Drag: spawn &amp; attract · Right-click/Shift+drag: repel · Double-click or W: gravity well · Space: blast · B: burst · C: colour mode · T: trails · P: pause · R: reset</div>
-      <div class="row">
-        <label>Gravity <input id="g" type="range" min="-2" max="3" step="0.05" value="0.35"></label>
-        <label>Bounce <input id="b" type="range" min="0.2" max="1.2" step="0.01" value="0.92"></label>
-        <label>Chaos <input id="ch" type="range" min="0" max="2" step="0.01" value="1"></label>
-      </div>
-      <div class="row">
-        <button id="pause">Pause</button>
-        <button id="color">Colour: Flow</button>
-        <button id="trails">Trails: on</button>
-        <button id="burst">Blast</button>
-        <button id="reset">Reset</button>
-      </div>
-      <div class="row" id="stats"></div>
+      <section class="sliders">
+        <label class="ctl"><span class="ctl-h">Gravity <output id="gv"></output></span>
+          <input id="g" type="range" min="-2" max="3" step="0.05" value="0.35"></label>
+        <label class="ctl"><span class="ctl-h">Bounce <output id="bv"></output></span>
+          <input id="b" type="range" min="0.2" max="1.2" step="0.01" value="0.92"></label>
+        <label class="ctl"><span class="ctl-h">Chaos <output id="chv"></output></span>
+          <input id="ch" type="range" min="0" max="2" step="0.01" value="1"></label>
+      </section>
+
+      <section class="actions">
+        <button id="pause" title="Pause / resume (P)">
+          <svg class="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>
+          <svg class="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>
+          <span class="lb">Pause</span></button>
+        <button id="color" title="Cycle colour mode (C)">
+          <svg viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>
+          <span class="lb">Flow</span></button>
+        <button id="trails" class="on" title="Toggle trails (T)">
+          <svg viewBox="0 0 24 24"><path d="M3 17c4-8 8 4 12-4s4-3 6-3"/></svg>
+          <span class="lb">Trails</span></button>
+        <button id="burst" class="hot" title="Blast from the centre (Space = at cursor)">
+          <svg viewBox="0 0 24 24"><path d="M12 2v5M12 17v5M2 12h5M17 12h5M5 5l3.5 3.5M15.5 15.5L19 19M19 5l-3.5 3.5M8.5 15.5L5 19"/></svg>
+          <span class="lb">Blast</span></button>
+        <button id="reset" title="Reset (R)">
+          <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5"/></svg>
+          <span class="lb">Reset</span></button>
+      </section>
     </div>
-  </div>
+  </aside>
   <script type="module" src="./main.js"></script>
 </body>
 </html>
