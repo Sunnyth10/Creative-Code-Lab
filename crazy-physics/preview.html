@@ -165,7 +165,7 @@ kbd {
         <label class="ctl"><span class="ctl-h">Bounce <output id="bv"></output></span>
           <input id="b" type="range" min="0.2" max="1.2" step="0.01" value="0.92"></label>
         <label class="ctl"><span class="ctl-h">Chaos <output id="chv"></output></span>
-          <input id="ch" type="range" min="0" max="2" step="0.01" value="1"></label>
+          <input id="ch" type="range" min="0" max="2" step="0.01" value="1.50"></label>
       </section>
 
       <section class="actions">
@@ -176,7 +176,7 @@ kbd {
         <button id="color" title="Cycle colour mode (C)">
           <svg viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>
           <span class="lb">Flow</span></button>
-        <button id="trails" class="on" title="Toggle trails (T)">
+        <button id="trails" title="Toggle trails (T)">
           <svg viewBox="0 0 24 24"><path d="M3 17c4-8 8 4 12-4s4-3 6-3"/></svg>
           <span class="lb">Trails</span></button>
         <button id="burst" class="hot" title="Blast from the centre (Space = at cursor)">
@@ -212,7 +212,7 @@ let colorMode = 0;
 let waves = [];
 const WAVE_LIFE = 40;
 const MODES = ["Flow", "Speed", "Size"];
-let hueBase = 180, simT = 0, paused = false, trails = true;
+let hueBase = 180, simT = 0, paused = false, trails = false;
 let head = new Int32Array(0), next = new Int32Array(MAX_BALLS), cols = 0, rows = 0;
 function resize() {
     W = window.innerWidth;

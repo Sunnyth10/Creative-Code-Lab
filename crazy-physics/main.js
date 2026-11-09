@@ -21,7 +21,7 @@ let colorMode = 0;
 let waves = [];
 const WAVE_LIFE = 40;
 const MODES = ["Flow", "Speed", "Size"];
-let hueBase = 180, simT = 0, paused = false, trails = true;
+let hueBase = 180, simT = 0, paused = false, trails = false;
 let head = new Int32Array(0), next = new Int32Array(MAX_BALLS), cols = 0, rows = 0;
 function resize() {
     W = window.innerWidth;
