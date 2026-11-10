@@ -1,6 +1,11 @@
 {
   "name": "crazy-physics-playground",
+  "version": "1.0.0",
+  "description": "A neon Canvas 2D physics sandbox: Verlet balls, gravity wells, blasts and colour-shifting collisions. Zero runtime dependencies.",
   "private": true,
+  "license": "MIT",
+  "keywords": ["physics", "canvas", "typescript", "verlet", "simulation", "creative-coding"],
+  "engines": { "node": ">=18" },
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
