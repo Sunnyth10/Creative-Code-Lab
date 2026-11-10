@@ -14,6 +14,12 @@ A neon sandbox where hundreds of glowing balls collide, orbit gravity wells, get
 
 <p align="center"><img src="demo.svg" alt="Animated preview of the physics playground" width="720"></p>
 
+## Visual demo
+
+<video src="visual-demo.mp4" controls playsinline preload="metadata" width="720">
+  Your browser cannot play the embedded video. [Open the visual demo](visual-demo.mp4).
+</video>
+
 ## Features
 
 - Up to 600 balls with mass-aware collisions
