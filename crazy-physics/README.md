@@ -197,6 +197,7 @@ preview.html     everything inlined: open this to play instantly
 banner.svg       README banner
 demo.svg         animated README preview
 tsconfig.json    strict TypeScript config
+developer.md     detailed architecture and contribution guide
 package.json     scripts + metadata
 LICENSE          MIT
 ```
