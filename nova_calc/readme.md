@@ -40,7 +40,7 @@ One file. Zero dependencies. No `eval()`. No subscriptions. No ads. No "Calculat
 python3 nova_calc.py            # run from inside this folder
 python3 nova_calc.py --test     # run the engine self-test
 ```
-for on;t this project
+for only this project
 ```bash
 git clone --filter=blob:none --sparse https://github.com/Sunnyth10/Creative-Code-Lab.git
 cd Creative-Code-Lab
